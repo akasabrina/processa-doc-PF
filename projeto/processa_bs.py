@@ -91,7 +91,7 @@ def processa_df(df_texto: pd.DataFrame, file_path: str, fname: str):
 
     # doc2vec
     tagged_doc = [TaggedDocument(texto, [i]) for i, texto in enumerate(df_texto.texto_limpo2)]
-    x = np.array([MODEL_D2V.infer_vector(tagged_doc[i][0], alpha=0.25, min_alpha=0.07) for i in range(len(tagged_doc))])
+    x = np.array([MODEL_D2V.infer_vector(tagged_doc[i][0], alpha=0.3, min_alpha=0.07) for i in range(len(tagged_doc))])
 
     # Classifica cada linha do texto
     df_texto["predict_lin"] = CLASSIFIER.predict(x)
