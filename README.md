@@ -10,3 +10,9 @@ Para me auxiliar nessa identificação:
 5) Em cada portaria aplico o NLP e utilizo apenas as strings classificadas como "PERSON", comparo com uma lista de nomes de peritos para verificar se aquela string
 é um nome de um perito
 6) Caso afirmativo adiciono o texto da portaria, o nome do perito e o link do PDF em um DataFrame.
+
+
+descrição:
+- doc2vec
+- HistGradientBoostingClassifier
+- NLP
