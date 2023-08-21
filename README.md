@@ -8,7 +8,7 @@ Para me auxiliar nessa identificação:
 3) Salvei os modelos com os melhores resultados
 4) Após transformar o pdf em texto, aplico os modelos criado que devem me retornam o texto classificado, e de acordo com a classificação separo as portarias.
 5) Em cada portaria aplico o NLP (da biblioteca spacy) e utilizo apenas as strings classificadas como "PERSON", comparo com uma lista de nomes de peritos para verificar se aquela string
-é um nome de um perito (Guardo essa comparação em um DataFrame para utlizar no próximo passo)
+é um nome de um perito (Guardo essa comparação em um DataFrame para utilizar no próximo passo)
 6) Caso afirmativo adiciono o texto da portaria, o nome do perito e o link do PDF em um DataFrame.
 
 descrição:
