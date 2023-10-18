@@ -3,13 +3,13 @@
 Este projeto de como objetivo identificar nomes de peritos em textos publicados em PDF.
 
 Para me auxiliar nessa identificação:
-1) Treinei um modelo de doc2vec com os textos dos PDFs para gerar vetores do documento
-2) Treinei um modelo de classificação (HistGradientBoostingClassifier) utilizando os vetores do doc2vec para classificar o texto do PDF.
-3) Salvei os modelos com os melhores resultados
-4) Após transformar o pdf em texto, aplico os modelos criado que devem me retornam o texto classificado, e de acordo com a classificação separo as portarias.
-5) Em cada portaria aplico o NLP (da biblioteca spacy) e utilizo apenas as strings classificadas como "PERSON", comparo com uma lista de nomes de peritos para verificar se aquela string
-é um nome de um perito (Guardo essa comparação em um DataFrame para utilizar no próximo passo)
-6) Caso afirmativo adiciono o texto da portaria, o nome do perito e o link do PDF em um DataFrame.
+1) Treino um modelo de doc2vec com os textos dos PDFs para gerar vetores do documento
+2) Treino um modelo de classificação (HistGradientBoostingClassifier) utilizando os vetores do doc2vec para classificar o texto do PDF.
+3) Salvo os modelos com os melhores resultados.
+4) Após transformar o pdf em texto, aplico os modelos criado que devem me retornar o texto classificado, e de acordo com a classificação separo as portarias.
+5) Utilizo um modelo de NLP ja treinado (biblioteca spacy) para então treinar novamente com os nomes dos peritos para melhorar o resultado do modelo.
+6) Em cada portaria aplico o NLP que treinei que me retorna as "entidades nomeadas" que ele identificou, comparo com uma lista de nomes de peritos para verificar se aquela "entidade" é um nome de um perito.
+7) Caso afirmativo adiciono o texto da portaria, o nome do perito e o link do PDF em um DataFrame.
 
 descrição:
 - doc2vec: É um algotirmo não-supervisionado para gerar vetores para frases, paragrafos ou documentos (Representações distribuídas de sentenças e documento)
