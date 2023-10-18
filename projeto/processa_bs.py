@@ -1,39 +1,49 @@
-# Bibliotecas
-import  os
-import  subprocess
-
-import  pandas   as pd
-import  numpy    as np
-import  re
-
-import  joblib
-import  json
-
 from    tqdm                  import tqdm
 from    unidecode             import unidecode
-
 from    gensim.models.doc2vec import TaggedDocument
 from    spacy                 import load
 from    config                import FOLDER_BS
-
+import  os
+import  subprocess
+import  pandas   as pd
+import  numpy    as np
+import  re
+import  joblib
+import  json
 import  warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
 
-# Constantes
-NLP = load("pt_core_news_lg")
-CLASSIFIER = joblib.load(r"scripts\models\model_clf2.pkl")
-MODEL_D2V = joblib.load(r"scripts\models\model_d2v.pkl")
+# Auxiliares e Regex
+NLP = load(r"models\modelo_ner_peritos")
+CLASSIFIER = joblib.load(r"models\model_clf2.pkl")
+MODEL_D2V = joblib.load(r"models\model_d2v.pkl")
 
-SUBST = re.compile('\\x0c')
-SUBST2 = re.compile(r"(\W)|(\S*@\S*\s?)|(http\S+)|(www\S+)|(\d+)|(\\n)|[ªº_]")
-RE_MINUS = re.compile(r'(\s([a-z][A-Z]{2,})|(\sDAS?\s)|(\sDES?\s)|(\sDOS?\s))')
-RE_MAIUS = re.compile(r'(([A-Z]{2,}\s?){2,})')
+SUBST = re.compile(r'\\x0c')
+SUBST2 = re.compile(r"[ªº,./#:;()]|(\S*@\S*\s?)|(http\S+)|(www\S+)")
+SUBST3 = re.compile(r"[0-9]{1,}")
 
-PCFS_CODIGO = pd.read_excel(r"scripts\peritos_codigo.xlsx")
+PCFS_CODIGO = pd.read_excel(r"peritos_codigo.xlsx")
+pcfs_codigo = PCFS_CODIGO.copy()
+pcfs_codigo.nome_perito.replace("(-)", " ", regex=True, inplace=True)
+pcfs_codigo.nome_perito = pcfs_codigo.nome_perito.apply(lambda x: unidecode(x).lower())
 
-# Funções
-def pdf_to_dataframe(fname) -> pd.DataFrame:
+# Separar nome e sobrenome e cria uma lista
+peritos = pcfs_codigo.nome_perito.copy()
+peritos.replace(r"(\s[D|d]?[a|e|i|o|u|E]s?\s)", " ", regex=True, inplace=True)
+
+lista_peritos = (peritos.str.split()).tolist()
+nomesPeritos = []
+for i in lista_peritos:
+    for n in i:
+        nomesPeritos.append(n)
+
+outros_nomes = ["ecio", "galant", "dalastra", "israel", "balarini", "rebonatto", "monte", "pertile", "cipriano", "cardozo"]        
+for n in outros_nomes:
+    nomesPeritos.append(n)
+
+# Funcoes
+def pdf_to_dataframe(fname: str) -> pd.DataFrame:
     """Convert online pdf to text using a complete URL, pdftotext module and tempfile. Convert text to DataFrame.
 
     Args:
@@ -52,24 +62,52 @@ def pdf_to_dataframe(fname) -> pd.DataFrame:
             cmd = r'pdftotext -layout -raw -enc UTF-8 "{}"'.format(fname)
             output, error = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True).communicate()
             if error:
-                raise subprocess.CalledProcessError # type: ignore
+                raise subprocess.CalledProcessError
         except subprocess.CalledProcessError as e:
             print('[Called Process Error] Could not convert using pdftotext. Technical Details given below.')
             print(str(e))
 
     # Transforma de TXT para DataFrame
-    with open(fname.replace('.pdf', '.txt'), 'r', encoding="utf8") as file:
+    with open(txtfn, 'r', encoding="utf8") as file:
         corpus = []
         for lin in file:
             corpus.append(lin)
 
     df_texto = pd.DataFrame(corpus, columns=['texto'])
-    df_texto.texto.replace(SUBST, "", regex=True, inplace=True) # type: ignore
+    df_texto.texto.replace(SUBST, '', regex=True, inplace=True)
 
     return df_texto
 
+def VerificaNome(texto: str) -> list:
+    """aplica o NLP no texto e extrai as entidades que são nomes de peritos.
 
-def processa_df(df_texto: pd.DataFrame, file_path: str, fname: str):
+    Args:
+        texto (str): texto completo da portaria
+
+    Returns:
+        list: nome do perito
+    """
+    doc = NLP(unidecode(texto).lower())
+    lst_nomes = []
+    for ent in doc.ents:
+        entidade = str(ent.text)
+
+        for name in pcfs_codigo.nome_perito:       
+
+            if name in entidade:
+                text = entidade.replace(name, " ")
+                lst_TF = [nome in nomesPeritos for nome in text.split()]
+                # Se algum token for True ele ignora a entidade
+                if any(lst_TF):
+                    continue
+                # Se todos os tokens forem False, adiciona o nome do perito
+                else:
+                    lst_nomes.append(name)
+
+    return lst_nomes
+
+
+def processa_df(df_texto: pd.DataFrame, file_path: str, fname: str) -> list:
     """ Faz o pré-processamento do DataFrame\n
     Aplica o doc2vec, classificando cada linha, sendo: [1: "linhas a ignorar", 2: "inicio de portaria", 3: "texto da portaria"]\n
     Separa as portaria apenas com as linhas classificadas como 2 e 3\n
@@ -81,96 +119,69 @@ def processa_df(df_texto: pd.DataFrame, file_path: str, fname: str):
         fname (str): File name.
 
     Returns:
-        list: 1º lista --> Texto portaria, Código portaria e Caminho do arquivo.\n
+        list:
+        1º lista --> Texto portaria, Código portaria e Caminho do arquivo.\n
         2º lista --> Código PCF e Código portaria.
     """
     # Pre-processamento do texto do DataFrame
-    df_texto['texto_limpo'] = df_texto.texto.replace(SUBST2, " ", regex = True) # type: ignore
-    df_texto.texto_limpo.apply(lambda x: unidecode(x))
-    df_texto['texto_limpo2'] = df_texto.texto_limpo.apply(lambda x: x.split())
+    df_texto['texto_limpo'] = df_texto.texto.replace(SUBST2, " ", regex = True)
+    df_texto['texto_limpo2'] = df_texto.texto_limpo.replace("\\n", " -- com -- ", regex=True)
+    df_texto['texto_limpo3'] = df_texto.texto_limpo2.replace(SUBST3, " -- ", regex = True)
+    df_texto['texto_limpo4'] = df_texto.texto_limpo.apply(lambda x: (unidecode(x)).split())
 
     # doc2vec
-    tagged_doc = [TaggedDocument(texto, [i]) for i, texto in enumerate(df_texto.texto_limpo2)]
+    tagged_doc = [TaggedDocument(texto, [i]) for i, texto in enumerate(df_texto.texto_limpo4)]
     x = np.array([MODEL_D2V.infer_vector(tagged_doc[i][0], alpha=0.3, min_alpha=0.07) for i in range(len(tagged_doc))])
 
     # Classifica cada linha do texto
     df_texto["predict_lin"] = CLASSIFIER.predict(x)
 
-    # Separa cada portaria
+    # Junta o texto de cada portaria
     lst_portarias_txtlimpo = []
-    txt_port1 = ''
     lst_portarias_txt = []
+    txt_port1 = ''
     txt_port2 = ''
+
     for lin in df_texto.iterrows():
         if lin[1].predict_lin == 3:
 
-            txt_port1 += lin[1].texto_limpo
+            txt_port1 += lin[1].texto_limpo3
             txt_port2 += lin[1].texto
 
         elif lin[1].predict_lin == 2:
-
-            lst_portarias_txtlimpo.append(txt_port1)
-            txt_port1 = lin[1].texto_limpo
+            
+            lst_portarias_txtlimpo.append(txt_port1.lower())
+            txt_port1 = lin[1].texto_limpo3
             lst_portarias_txt.append(txt_port2)
             txt_port2 = lin[1].texto
 
+    # Junta as portarias em uma lista
     lst_portarias_txtlimpo.append(txt_port1)
     lst_portarias_txt.append(txt_port2)
-    
-    pcfs_codigo = PCFS_CODIGO.copy()
-    pcfs_codigo.nome_perito = pcfs_codigo.nome_perito.apply(lambda x: unidecode(x).lower())    
-    nome_codigo = pd.DataFrame()
 
-    # passa de portaria em portaria aplicando o NLP
-    for portaria in lst_portarias_txtlimpo:
-        
-        for r in re.findall(RE_MINUS, portaria):
-            portaria = portaria.replace(r[0], r[0].lower())
-        for r in re.findall(RE_MAIUS, portaria):
-            portaria = portaria.replace(r[0], r[0].title())
-
-        # Aplica o NLP na portaria
-        # Transforma em DataFrame os que forem classificados como PER = Pessoa
-        doc = NLP(portaria)
-        for ent in doc.ents:
-            if ent.label_ == 'PER':
-
-                nome_procurado = unidecode(ent.text).lower()
-                pcfs_codigo[nome_procurado] = pcfs_codigo.nome_perito.apply(lambda x: x in nome_procurado)
-
-        # nome_codigo recebe um DataFrame com os nomes e os codigos dos PCFs que estão na portaria 
-        nome_codigo = pcfs_codigo[pcfs_codigo.iloc[:,2:].any(axis=1)][["nome_perito", "codigo_de_barras_perito"]]
-
-    df_auxi = pd.DataFrame({"texto": lst_portarias_txt,"texto_limpo": lst_portarias_txtlimpo})
-    df_auxi.texto_limpo = df_auxi.texto_limpo.apply(lambda x: x.lower())  
-
-    # verifica qual PCF esta na portaria e coloca o código do PCF correspondente
-    for j in range(len(nome_codigo)):
-
-        nome = nome_codigo.iloc[j]["nome_perito"]
-        cod = nome_codigo.iloc[j]["codigo_de_barras_perito"]
-        df_auxi[nome] = df_auxi.texto_limpo.apply(lambda x: cod if nome in x else 0)
-
-    # apenas as linhas que tem algum código de PCF ficam
-    df_auxi = df_auxi[df_auxi.iloc[:,2:].any(axis=1)]
-
-    # junta os códigos da mesma linha em uma nova coluna "codigos"
-    df_auxi["codigos"] = df_auxi.apply(lambda row: [valor for valor in row[2:] if pd.notnull(valor) and valor > 0], axis=1).tolist()
-    df_auxi.reset_index(inplace=True, drop=True)
+    # DataFrame com as listas acima, aplica a função VerificaNome que retorna os nomes dos peritos que tiver na portaria
+    df_auxi = pd.DataFrame({"portaria": lst_portarias_txt, "portariaLimpa": lst_portarias_txtlimpo})
+    df_auxi["nomes"] = df_auxi.portariaLimpa.apply(lambda x: VerificaNome(x))
+    # DataFrame apenas com as portarias que tem algum nome de perito, o resto é descartado
+    df_port_cod = df_auxi[df_auxi.iloc[:,2:].any(axis=1)][["portaria", "nomes"]]
+    df_port_cod.reset_index(drop=True, inplace=True)
 
     lst_txt_codPort_path = []
     lst_codPCF_codPort = []
-    for i in range(len(df_auxi)):
-
-        # Cria um dicionário com o Texto da portaria, Código unico da portaria e o Caminho do arquivo
-        dict1 = {"Texto": df_auxi.texto[i], "CodigoPortaria": fname+f"-{i+1:03d}", "Path": file_path}
+    for i in range(len(df_port_cod)):
+        # Dicionário com o Texto da portaria, Código unico da portaria e o Caminho do arquivo
+        dict1 = {"Portaria": df_port_cod.portaria[i], "CodigoPortaria": fname+f"-{i+1:03d}", "Path": file_path}
         lst_txt_codPort_path.append(dict1)
+        
+        for nome in df_port_cod.nomes[i]:
+            for j in range(len(pcfs_codigo)):
+                nome_perito = pcfs_codigo.iloc[j]["nome_perito"]
+                cod = pcfs_codigo.iloc[j]["codigo_de_barras_perito"]
 
-        for cod in df_auxi.codigos[i]:
-
-            # Cria um dicionário com o Código do PCF e o Código único da portaria
-            dict2 = {"CodigoPCF": cod, "CodigoPortaria": fname+f"-{i+1:03d}"}
-            lst_codPCF_codPort.append(dict2)
+                if nome in nome_perito:
+                    # Dicionário com o Código do PCF e o Código único da portaria
+                    dict2 = {"CodigoPCF": cod, "CodigoPortaria": fname+f"-{i+1:03d}"}
+                    lst_codPCF_codPort.append(dict2)
 
     return lst_txt_codPort_path, lst_codPCF_codPort
 
