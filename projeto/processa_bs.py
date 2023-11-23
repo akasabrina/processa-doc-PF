@@ -1,15 +1,16 @@
-from    tqdm                  import tqdm
-from    unidecode             import unidecode
-from    gensim.models.doc2vec import TaggedDocument
-from    spacy                 import load
-from    config                import FOLDER_BS
-import  os
-import  subprocess
-import  pandas   as pd
-import  numpy    as np
-import  re
-import  joblib
-import  json
+from tqdm                  import tqdm
+from spacy                 import load
+from unidecode             import unidecode
+from gensim.models.doc2vec import TaggedDocument
+from config                import FOLDER_BS
+import os
+import subprocess
+import pandas as pd
+import numpy as np
+import re
+import joblib
+import json
+
 import  warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
@@ -19,13 +20,13 @@ NLP = load(r"models\modelo_ner_peritos")
 CLASSIFIER = joblib.load(r"models\model_clf2.pkl")
 MODEL_D2V = joblib.load(r"models\model_d2v.pkl")
 
-SUBST = re.compile(r'\\x0c')
-SUBST2 = re.compile(r"[ªº,./#:;()]|(\S*@\S*\s?)|(http\S+)|(www\S+)")
-SUBST3 = re.compile(r"[0-9]{1,}")
+SUBST = re.compile(r"[ªº,./#:;()-]|(\S*@\S*\s?)|(http\S+)|(www\S+)")
+SUBST2 = re.compile(r"[0-9]{1,}")
 
+# Nome de peritos
 PCFS_CODIGO = pd.read_excel(r"peritos_codigo.xlsx")
 pcfs_codigo = PCFS_CODIGO.copy()
-pcfs_codigo.nome_perito.replace("(-)", " ", regex=True, inplace=True)
+pcfs_codigo.nome_perito.replace("-", " ", regex=True, inplace=True)
 pcfs_codigo.nome_perito = pcfs_codigo.nome_perito.apply(lambda x: unidecode(x).lower())
 
 # Separar nome e sobrenome e cria uma lista
@@ -43,7 +44,7 @@ for n in outros_nomes:
     nomesPeritos.append(n)
 
 # Funcoes
-def pdf_to_dataframe(fname: str) -> pd.DataFrame:
+def pdf_to_dataframe(fname) -> pd.DataFrame:
     """Convert online pdf to text using a complete URL, pdftotext module and tempfile. Convert text to DataFrame.
 
     Args:
@@ -62,7 +63,7 @@ def pdf_to_dataframe(fname: str) -> pd.DataFrame:
             cmd = r'pdftotext -layout -raw -enc UTF-8 "{}"'.format(fname)
             output, error = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True).communicate()
             if error:
-                raise subprocess.CalledProcessError
+                raise subprocess.CalledProcessError # type: ignore
         except subprocess.CalledProcessError as e:
             print('[Called Process Error] Could not convert using pdftotext. Technical Details given below.')
             print(str(e))
@@ -74,7 +75,7 @@ def pdf_to_dataframe(fname: str) -> pd.DataFrame:
             corpus.append(lin)
 
     df_texto = pd.DataFrame(corpus, columns=['texto'])
-    df_texto.texto.replace(SUBST, '', regex=True, inplace=True)
+    df_texto.texto.replace(r'\\x0c', '', regex=True, inplace=True)
 
     return df_texto
 
@@ -107,30 +108,31 @@ def VerificaNome(texto: str) -> list:
     return lst_nomes
 
 
-def processa_df(df_texto: pd.DataFrame, file_path: str, fname: str) -> list:
-    """ Faz o pré-processamento do DataFrame\n
+def processa_df(df_texto: pd.DataFrame, file_path: str, fname: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Faz o pré-processamento do DataFrame\n
     Aplica o doc2vec, classificando cada linha, sendo: [1: "linhas a ignorar", 2: "inicio de portaria", 3: "texto da portaria"]\n
     Separa as portaria apenas com as linhas classificadas como 2 e 3\n
     É utilizado o NLP para identificar pessoas no documento, depois verifica se o nome da pessoa é de um PCF
 
     Args:
         df_texto (pd.DataFrame): Text in a DataFrame.
-        file_path (str): URL completa do arquivo.
-        fname (str): File name.
+        file_path (str): Caminho do arquivo da portaria.
+        fname (str): Nome do arquivo.
 
     Returns:
-        list:
-        1º lista --> Texto portaria, Código portaria e Caminho do arquivo.\n
-        2º lista --> Código PCF e Código portaria.
+        tuple[pd.DataFrame, pd.DataFrame]: 
+        1º Dataframe: Texto, código único e caminho da portaria\n
+        2º Dataframe: código PCF, código único da portaria
     """
     # Pre-processamento do texto do DataFrame
-    df_texto['texto_limpo'] = df_texto.texto.replace(SUBST2, " ", regex = True)
+    df_texto['texto_limpo'] = df_texto.texto.replace(SUBST, " ", regex = True)  # type: ignore
     df_texto['texto_limpo2'] = df_texto.texto_limpo.replace("\\n", " -- com -- ", regex=True)
-    df_texto['texto_limpo3'] = df_texto.texto_limpo2.replace(SUBST3, " -- ", regex = True)
-    df_texto['texto_limpo4'] = df_texto.texto_limpo.apply(lambda x: (unidecode(x)).split())
+    df_texto['texto_limpo2'] = df_texto.texto_limpo2.replace(SUBST2, " -- ", regex = True) # type: ignore
+    # Usado para classificar as linhas do documento
+    df_texto['texto_limpo3'] = df_texto.texto_limpo.apply(lambda x: (unidecode(x)).split())
 
     # doc2vec
-    tagged_doc = [TaggedDocument(texto, [i]) for i, texto in enumerate(df_texto.texto_limpo4)]
+    tagged_doc = [TaggedDocument(texto, [i]) for i, texto in enumerate(df_texto.texto_limpo3)]
     x = np.array([MODEL_D2V.infer_vector(tagged_doc[i][0], alpha=0.3, min_alpha=0.07) for i in range(len(tagged_doc))])
 
     # Classifica cada linha do texto
@@ -139,54 +141,47 @@ def processa_df(df_texto: pd.DataFrame, file_path: str, fname: str) -> list:
     # Junta o texto de cada portaria
     lst_portarias_txtlimpo = []
     lst_portarias_txt = []
-    txt_port1 = ''
-    txt_port2 = ''
+    port_limpo = ''
+    portaria = ''
+
+    df_port_codPort_path = pd.DataFrame()
+    df_codPCF_codPort = pd.DataFrame()
 
     for lin in df_texto.iterrows():
         if lin[1].predict_lin == 3:
-
-            txt_port1 += lin[1].texto_limpo3
-            txt_port2 += lin[1].texto
+            portaria += lin[1].texto
+            port_limpo += lin[1].texto_limpo2
 
         elif lin[1].predict_lin == 2:
-            
-            lst_portarias_txtlimpo.append(txt_port1.lower())
-            txt_port1 = lin[1].texto_limpo3
-            lst_portarias_txt.append(txt_port2)
-            txt_port2 = lin[1].texto
+            lst_portarias_txt.append(portaria)
+            portaria = lin[1].texto
+            lst_portarias_txtlimpo.append(port_limpo.lower())
+            port_limpo = lin[1].texto_limpo2
 
-    # Junta as portarias em uma lista
-    lst_portarias_txtlimpo.append(txt_port1)
-    lst_portarias_txt.append(txt_port2)
+    lst_portarias_txt.append(portaria)
+    lst_portarias_txtlimpo.append(port_limpo)
 
-    # DataFrame com as listas acima, aplica a função VerificaNome que retorna os nomes dos peritos que tiver na portaria
-    df_auxi = pd.DataFrame({"portaria": lst_portarias_txt, "portariaLimpa": lst_portarias_txtlimpo})
-    df_auxi["nomes"] = df_auxi.portariaLimpa.apply(lambda x: VerificaNome(x))
-    # DataFrame apenas com as portarias que tem algum nome de perito, o resto é descartado
-    df_port_cod = df_auxi[df_auxi.iloc[:,2:].any(axis=1)][["portaria", "nomes"]]
-    df_port_cod.reset_index(drop=True, inplace=True)
+    num = 0
+    for i in range(len(lst_portarias_txt)):
+        lst_nomes = VerificaNome(lst_portarias_txtlimpo[i])
+        if lst_nomes:
+            num+=1
+            df_port_codPort_path=df_port_codPort_path.append({"Portaria": lst_portarias_txt[i], "CodigoPortaria": fname+f"-{num:03d}", "Path": file_path}, ignore_index=True) # type: ignore
 
-    lst_txt_codPort_path = []
-    lst_codPCF_codPort = []
-    for i in range(len(df_port_cod)):
-        # Dicionário com o Texto da portaria, Código unico da portaria e o Caminho do arquivo
-        dict1 = {"Portaria": df_port_cod.portaria[i], "CodigoPortaria": fname+f"-{i+1:03d}", "Path": file_path}
-        lst_txt_codPort_path.append(dict1)
-        
-        for nome in df_port_cod.nomes[i]:
-            for j in range(len(pcfs_codigo)):
-                nome_perito = pcfs_codigo.iloc[j]["nome_perito"]
-                cod = pcfs_codigo.iloc[j]["codigo_de_barras_perito"]
+            for nome in lst_nomes:
+                for j in range(len(pcfs_codigo)):
+                    nome_perito = pcfs_codigo.iloc[j]["nome_perito"]
+                    cod = pcfs_codigo.iloc[j]["codigo_de_barras_perito"]
 
-                if nome in nome_perito:
-                    # Dicionário com o Código do PCF e o Código único da portaria
-                    dict2 = {"CodigoPCF": cod, "CodigoPortaria": fname+f"-{i+1:03d}"}
-                    lst_codPCF_codPort.append(dict2)
+                    if nome in nome_perito:
+                        df_codPCF_codPort=df_codPCF_codPort.append({"CodigoPCF": cod, "CodigoPortaria": fname+f"-{num:03d}"}, ignore_index=True) # type: ignore
+        else:
+            pass
 
-    return lst_txt_codPort_path, lst_codPCF_codPort
+    return df_port_codPort_path, df_codPCF_codPort
 
 
-def processa_file(pasta: str, txt_codPort_path, codPCF_codPort, reprocessa = False):
+def processa_file(pasta: str, txt_codPort_path, codPCF_codPort, reprocessa = False) -> tuple[list, list]:
     """Abre a pasta e processa arquivo por arquivo\n
     Caso o arquivo já tenha sido processado é pulado
 
@@ -196,7 +191,7 @@ def processa_file(pasta: str, txt_codPort_path, codPCF_codPort, reprocessa = Fal
         codPCF_codPort: código do PCF e código único da portaria.
 
     Returns:
-        list: 1º lista --> Texto portaria, Código portaria e Caminho do arquivo.\n
+        tuple[list, list]: 1º lista --> Texto portaria, Código portaria e Caminho do arquivo.\n
         2º lista --> Código PCF e Código portaria.
     """
     for dirpath, _, filenames in os.walk(pasta):
@@ -226,9 +221,8 @@ def processa_file(pasta: str, txt_codPort_path, codPCF_codPort, reprocessa = Fal
                 path = dirpath + "\\" + file
                 txtfn = file.replace('.pdf', '')
                 df = processa_df(pdf_to_dataframe(path), path, txtfn)
-                if df:
-                    txt_codPort_path = txt_codPort_path.append(df[0])
-                    codPCF_codPort = codPCF_codPort.append(df[1])
+                txt_codPort_path = txt_codPort_path.append(df[0])
+                codPCF_codPort = codPCF_codPort.append(df[1])
 
                 # Adiciona o arquivo à lista de processados
                 processados_pasta.append(file[:-4])
