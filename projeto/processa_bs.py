@@ -17,6 +17,7 @@ warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
 
 # Auxiliares e Regex
 NLP = load(r"models\modelo_ner_peritos")
+NLP.max_length = 2000000
 CLASSIFIER = joblib.load(r"models\model_clf2.pkl")
 MODEL_D2V = joblib.load(r"models\model_d2v.pkl")
 
@@ -108,7 +109,7 @@ def VerificaNome(texto: str) -> list:
     return lst_nomes
 
 
-def processa_df(df_texto: pd.DataFrame, file_path: str, fname: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+def processa_df(df_texto: pd.DataFrame, file_path: str, fname: str, df1: pd.DataFrame, df2: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Faz o pré-processamento do DataFrame\n
     Aplica o doc2vec, classificando cada linha, sendo: [1: "linhas a ignorar", 2: "inicio de portaria", 3: "texto da portaria"]\n
     Separa as portaria apenas com as linhas classificadas como 2 e 3\n
@@ -118,6 +119,8 @@ def processa_df(df_texto: pd.DataFrame, file_path: str, fname: str) -> tuple[pd.
         df_texto (pd.DataFrame): Text in a DataFrame.
         file_path (str): Caminho do arquivo da portaria.
         fname (str): Nome do arquivo.
+        df1 (pd.Dataframe): texto, código e caminho da portaria
+        df2 (pd.Dataframe): código PCF, código único da portaria
 
     Returns:
         tuple[pd.DataFrame, pd.DataFrame]: 
@@ -144,9 +147,6 @@ def processa_df(df_texto: pd.DataFrame, file_path: str, fname: str) -> tuple[pd.
     port_limpo = ''
     portaria = ''
 
-    df_port_codPort_path = pd.DataFrame()
-    df_codPCF_codPort = pd.DataFrame()
-
     for lin in df_texto.iterrows():
         if lin[1].predict_lin == 3:
             portaria += lin[1].texto
@@ -166,7 +166,7 @@ def processa_df(df_texto: pd.DataFrame, file_path: str, fname: str) -> tuple[pd.
         lst_nomes = VerificaNome(lst_portarias_txtlimpo[i])
         if lst_nomes:
             num+=1
-            df_port_codPort_path=df_port_codPort_path.append({"Portaria": lst_portarias_txt[i], "CodigoPortaria": fname+f"-{num:03d}", "Path": file_path}, ignore_index=True) # type: ignore
+            df1=df1.append({"Portaria": lst_portarias_txt[i], "CodigoPortaria": fname+f"-{num:03d}", "Path": file_path}, ignore_index=True)
 
             for nome in lst_nomes:
                 for j in range(len(pcfs_codigo)):
@@ -174,14 +174,14 @@ def processa_df(df_texto: pd.DataFrame, file_path: str, fname: str) -> tuple[pd.
                     cod = pcfs_codigo.iloc[j]["codigo_de_barras_perito"]
 
                     if nome in nome_perito:
-                        df_codPCF_codPort=df_codPCF_codPort.append({"CodigoPCF": cod, "CodigoPortaria": fname+f"-{num:03d}"}, ignore_index=True) # type: ignore
+                        df2=df2.append({"CodigoPCF": cod, "CodigoPortaria": fname+f"-{num:03d}"}, ignore_index=True)
         else:
             pass
 
-    return df_port_codPort_path, df_codPCF_codPort
+    return df1, df2
 
 
-def processa_file(pasta: str, txt_codPort_path, codPCF_codPort, reprocessa = False) -> tuple[list, list]:
+def processa_file(pasta: str, txt_codPort_path, codPCF_codPort, reprocessa = False):
     """Abre a pasta e processa arquivo por arquivo\n
     Caso o arquivo já tenha sido processado é pulado
 
@@ -220,9 +220,7 @@ def processa_file(pasta: str, txt_codPort_path, codPCF_codPort, reprocessa = Fal
             else:
                 path = dirpath + "\\" + file
                 txtfn = file.replace('.pdf', '')
-                df = processa_df(pdf_to_dataframe(path), path, txtfn)
-                txt_codPort_path = txt_codPort_path.append(df[0])
-                codPCF_codPort = codPCF_codPort.append(df[1])
+                txt_codPort_path, codPCF_codPort = processa_df(pdf_to_dataframe(path), path, txtfn, txt_codPort_path, codPCF_codPort)
 
                 # Adiciona o arquivo à lista de processados
                 processados_pasta.append(file[:-4])
@@ -247,8 +245,6 @@ def processa_portaria(reprocessa = False):
 
     # processa arquivo
     txt_codPort_path, codPCF_codPort = processa_file(FOLDER_BS, txt_codPort_path, codPCF_codPort, reprocessa)
-    txt_codPort_path.reset_index(drop=True, inplace=True)
-    codPCF_codPort.reset_index(drop=True, inplace=True)
     
     # salva processamento
     txt_codPort_path.to_hdf(pross_h5, key = 'txt_codPort_path', mode = 'w')
