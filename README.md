@@ -1,6 +1,6 @@
 # processa-doc-PF
 
-Este projeto de como objetivo identificar nomes de peritos em textos publicados em PDF.
+Este projeto tem como objetivo identificar nomes de peritos em textos publicados em PDF.
 
 Para me auxiliar nessa identificação:
 1) Treino um modelo de doc2vec com os textos dos PDFs para gerar vetores do documento
@@ -12,7 +12,7 @@ Para me auxiliar nessa identificação:
 7) Caso afirmativo adiciono o texto da portaria, o nome do perito e o link do PDF em um DataFrame.
 
 descrição:
-- doc2vec: É um algotirmo não-supervisionado para gerar vetores para frases, paragrafos ou documentos (Representações distribuídas de sentenças e documento)
+- doc2vec: É um algoritimo não-supervisionado para gerar vetores para frases, paragrafos ou documentos (Representações distribuídas de sentenças e documento)
 - HistGradientBoostingClassifier: Árvore de classificação de aumento de gradiente baseada em histograma. Para grandes conjuntos de dados (n_samples >= 10.000)
 - NLP spacy: Algoritmo para reconhecimento de entidades nomeadas. O reconhecedor de entidade identifica intervalos rotulados de tokens não sobrepostos. O algoritmo baseado em transição usado codifica certas suposições que são eficazes para tarefas de reconhecimento de entidades nomeadas “tradicionais”
 
