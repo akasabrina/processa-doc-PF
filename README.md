@@ -1,19 +1,41 @@
 # processa-doc-PF
 
-Este projeto tem como objetivo identificar nomes de peritos em textos publicados em PDF.
+O processa-doc-PF é um projeto desenvolvido para identificar nomes de peritos em textos extraídos de documentos PDF. A solução utiliza técnicas de Processamento de Linguagem Natural (NLP) e aprendizado de máquina para realizar a extração e classificação de informações relevantes, organizando os dados em um formato estruturado.
 
-Para me auxiliar nessa identificação:
-1) Aplico um modelo de doc2vec com os textos dos PDFs para gerar vetores do documento
-2) Treino um modelo de classificação (HistGradientBoostingClassifier) utilizando os vetores do doc2vec para classificar o texto do PDF.
-3) Salvo os modelos com os melhores resultados.
-4) Após transformar o pdf em texto, aplico os modelos criado que devem me retornar o texto classificado, e de acordo com a classificação separo as portarias.
-5) Utilizo um modelo de NLP ja treinado (biblioteca spacy) para então treinar novamente com os nomes dos peritos para melhorar o resultado do modelo.
-6) Em cada portaria aplico o NLP que treinei que me retorna as "entidades nomeadas" que ele identificou, comparo com uma lista de nomes de peritos para verificar se aquela "entidade" é um nome de um perito.
-7) Caso afirmativo adiciono o texto da portaria, o nome do perito e o link do PDF em um DataFrame.
+## Funcionalidades
+**1. Geração de Vetores com doc2vec**
 
-descrição:
-- doc2vec: É um algoritmo não-supervisionado para gerar vetores para frases, paragrafos ou documentos (Representações distribuídas de sentenças e documento)
-- HistGradientBoostingClassifier: Árvore de classificação de aumento de gradiente baseada em histograma. Para grandes conjuntos de dados (n_samples >= 10.000)
-- NLP spacy: Algoritmo para reconhecimento de entidades nomeadas. O reconhecedor de entidade identifica intervalos rotulados de tokens não sobrepostos. O algoritmo baseado em transição usado codifica certas suposições que são eficazes para tarefas de reconhecimento de entidades nomeadas “tradicionais”
+Os textos extraídos dos PDFs são processados com o modelo doc2vec, que converte documentos em representações vetoriais distribuídas. Isso permite capturar a semântica dos textos para análises subsequentes.
 
-obs: Como o NLP padrão estava deixando muitos nomes de peritos passarem ou cortando o nome completo ao meio eu precisei treinar ele com os nomes dos peritos que eu tinha. Após o treinamento NLP padrão com os nomes de peritos o desempenho do algoritmo melhorou para 90% de certos.
+**2. Classificação com HistGradientBoostingClassifier**
+
+Após a vetorização, um modelo de classificação baseado no HistGradientBoostingClassifier é treinado para identificar e classificar o conteúdo dos PDFs. Os modelos com melhor desempenho são salvos para utilização futura.
+
+**3. Extração e Classificação de Portarias**
+
+Após a transformação dos PDFs em texto, os modelos treinados são aplicados para classificar o texto e separar as portarias relevantes.
+Um modelo de NLP pré-treinado (utilizando a biblioteca spaCy) é ajustado com uma lista personalizada de nomes de peritos para aprimorar o reconhecimento.
+
+**4. Reconhecimento de Entidades Nomeadas**
+
+- O modelo NLP identifica "entidades nomeadas" nos textos das portarias.
+- As entidades detectadas são comparadas com uma lista de nomes de peritos.
+- Quando há uma correspondência, o texto da portaria, o nome do perito e o link do PDF são armazenados em um DataFrame.
+
+## Benefícios do Ajuste do Modelo NLP
+O modelo NLP padrão apresentou dificuldades em identificar nomes completos de peritos. Para superar essa limitação, o modelo foi ajustado com uma lista personalizada de nomes de peritos, resultando em uma melhoria significativa no desempenho, alcançando 90% de precisão na identificação correta.
+
+## Principais Tecnologias Utilizadas
+- **doc2vec:** Algoritmo não supervisionado que gera representações vetoriais distribuídas para frases, parágrafos ou documentos, facilitando a análise semântica.
+- **HistGradientBoostingClassifier:** Modelo de classificação de árvore baseado em aumento de gradiente com histograma, ideal para grandes conjuntos de dados (n_samples ≥ 10.000).
+- **spaCy:** Biblioteca de NLP utilizada para reconhecimento de entidades nomeadas. Seu algoritmo baseado em transição foi ajustado para tarefas específicas do projeto.
+ 
+## Fluxo de Trabalho
+1. Extração do texto dos PDFs.
+2. Vetorização do texto com doc2vec.
+3. Treinamento e aplicação do HistGradientBoostingClassifier para classificar os documentos.
+4. Separação e identificação das portarias classificadas.
+5. Ajuste e aplicação do modelo spaCy para identificar os nomes de peritos.
+6. Armazenamento dos dados estruturados em um DataFrame (texto da portaria, nome do perito e link do PDF).
+
+*Este projeto foi desenvolvido inteiramente durante meu estágio na Policia Federal.*
